@@ -580,3 +580,21 @@ get_day_summary:
         entity:
           integration: garmin_connect
           domain: sensor
+
+get_sleep_night:
+  name: Get sleep night
+  description: Fetch one night's sleep stage timeline, restless moments and overnight stress from Garmin Connect and return them.
+  fields:
+    date:
+      name: Date
+      description: The morning the night ended (Garmin's sleep date).
+      required: true
+      selector:
+        date:
+    entity_id:
+      name: Entity
+      description: Optional Garmin Connect entity whose account to read.
+      selector:
+        entity:
+          integration: garmin_connect
+          domain: sensor

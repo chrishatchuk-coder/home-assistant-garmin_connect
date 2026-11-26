@@ -296,6 +296,14 @@
     }
   },
   "services": {
+    "get_sleep_night": {
+      "name": "Get sleep night",
+      "description": "Fetch one night's sleep stage timeline, restless moments and overnight stress from Garmin Connect and return them.",
+      "fields": {
+        "date": { "name": "Date", "description": "The morning the night ended (Garmin's sleep date)." },
+        "entity_id": { "name": "Entity", "description": "Optional Garmin Connect entity whose account to read." }
+      }
+    },
     "get_day_summary": {
       "name": "Get day summary",
       "description": "Fetch the daily summary (steps, stress, Body Battery, resting heart rate, intensity minutes) for any date from Garmin Connect and return it.",
@@ -458,6 +466,7 @@
     "update_failed": { "message": "Error fetching Garmin Connect {data} data: {error}" },
     "update_timeout": { "message": "Garmin Connect {data} refresh exceeded {seconds} seconds" },
     "get_day_summary_failed": { "message": "Failed to fetch the day summary: {error}" },
+    "get_sleep_night_failed": { "message": "Failed to fetch the sleep night: {error}" },
     "add_blood_pressure_failed": { "message": "Failed to add blood pressure: {error}" },
     "add_hydration_failed": { "message": "Failed to log hydration: {error}" },
     "add_nutrition_failed": { "message": "Failed to log nutrition: {error}" },

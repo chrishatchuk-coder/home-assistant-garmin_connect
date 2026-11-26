@@ -278,6 +278,33 @@ def sleep_timeline(raw: dict[str, Any]) -> dict[str, Any]:
     return {"sleepLevels": levels or None, "sleepRestlessMoments": restless or None}
 
 
+def sleep_night(raw: dict[str, Any]) -> dict[str, Any]:
+    """A whole night for backfilling: timeline, stress series, window and totals."""
+    daily = raw.get("dailySleepDTO") or {}
+    timeline = sleep_timeline(raw)
+    stress = [
+        {"time": time, "value": sample.get("value")}
+        for sample in raw.get("sleepStress") or []
+        if isinstance(sample, dict)
+        and isinstance(sample.get("value"), int | float)
+        and sample["value"] >= 0
+        and (time := _gmt(sample.get("startGMT")))
+    ]
+    score = ((daily.get("sleepScores") or {}).get("overall") or {}).get("value")
+    return {
+        "sleep_start": _gmt(daily.get("sleepStartTimestampGMT")),
+        "sleep_end": _gmt(daily.get("sleepEndTimestampGMT")),
+        "sleep_score": score,
+        "deep_seconds": daily.get("deepSleepSeconds"),
+        "light_seconds": daily.get("lightSleepSeconds"),
+        "rem_seconds": daily.get("remSleepSeconds"),
+        "awake_seconds": daily.get("awakeSleepSeconds"),
+        "sleep_levels": timeline["sleepLevels"] or [],
+        "restless_moments": timeline["sleepRestlessMoments"] or [],
+        "sleep_stress": stress,
+    }
+
+
 class CoreCoordinator(BaseGarminCoordinator):
     """Coordinator for core data: summary, steps, sleep (~50 sensors).
 
@@ -305,7 +332,7 @@ class CoreCoordinator(BaseGarminCoordinator):
         self._sleep_raw: dict[str, Any] = {}
         # Keep the raw sleep response that fetch_core_data already requests,
         # so the stage timeline costs no extra API call.
-        fetch_sleep = client._get_sleep_data_raw
+        fetch_sleep = self._fetch_sleep_raw = client._get_sleep_data_raw
 
         async def _capture_sleep(*args: Any, **kwargs: Any) -> dict[str, Any]:
             result = await fetch_sleep(*args, **kwargs)
@@ -351,6 +378,10 @@ class CoreCoordinator(BaseGarminCoordinator):
             self._yesterday_date = target
             self._yesterday_sync = last_sync
         return self._yesterday
+
+    async def async_get_sleep_night(self, day: date) -> dict[str, Any]:
+        """Return the night ending on ``day`` (Garmin's sleep calendar date)."""
+        return sleep_night(await self._fetch_sleep_raw(day) or {})
 
     async def async_get_day(self, day: date) -> dict[str, Any]:
         """Return the mapped and raw daily summary for any date."""
