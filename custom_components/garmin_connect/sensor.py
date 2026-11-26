@@ -441,6 +441,10 @@ def _sleep_score_attributes(data: dict[str, Any]) -> dict[str, Any]:
     attributes["feedback"] = data.get("sleepScoreFeedback")
     attributes["insight"] = data.get("sleepScoreInsight")
     attributes["personalized_insight"] = data.get("sleepScorePersonalizedInsight")
+    if levels := data.get("sleepLevels"):
+        attributes["sleep_levels"] = levels
+    if restless := data.get("sleepRestlessMoments"):
+        attributes["restless_moments"] = restless
     return attributes
 
 

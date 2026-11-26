@@ -9,7 +9,7 @@ import asyncio
 import logging
 from collections.abc import Iterator
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 from ha_garmin import GarminAuth, GarminClient
@@ -237,6 +237,47 @@ def summarize_day(raw: dict[str, Any], day: date) -> dict[str, Any]:
     }
 
 
+# Garmin's sleepLevels activityLevel codes, as the Garmin app colours them.
+_SLEEP_STAGE_NAMES = {0: "deep", 1: "light", 2: "rem", 3: "awake"}
+
+
+def _gmt(value: Any) -> str | None:
+    """Garmin GMT time (epoch ms or naive ISO string) as an ISO UTC string."""
+    if isinstance(value, int | float):
+        moment = datetime.fromtimestamp(value / 1000, tz=UTC)
+    elif isinstance(value, str) and value:
+        try:
+            moment = datetime.fromisoformat(value).replace(tzinfo=UTC)
+        except ValueError:
+            return None
+    else:
+        return None
+    return moment.isoformat().replace("+00:00", "Z")
+
+
+def sleep_timeline(raw: dict[str, Any]) -> dict[str, Any]:
+    """Stage segments and restless moments from Garmin's raw sleep response.
+
+    ha-garmin fetches the full response but keeps only the nightly totals,
+    so these are pulled from the same response without another API call.
+    """
+    levels = []
+    for seg in raw.get("sleepLevels") or []:
+        if not isinstance(seg, dict):
+            continue
+        start, end = _gmt(seg.get("startGMT")), _gmt(seg.get("endGMT"))
+        level = seg.get("activityLevel")
+        stage = _SLEEP_STAGE_NAMES.get(int(level)) if isinstance(level, int | float) else None
+        if start and end and stage:
+            levels.append({"start": start, "end": end, "stage": stage})
+    restless = [
+        time
+        for moment in raw.get("sleepRestlessMoments") or []
+        if isinstance(moment, dict) and (time := _gmt(moment.get("startGMT")))
+    ]
+    return {"sleepLevels": levels or None, "sleepRestlessMoments": restless or None}
+
+
 class CoreCoordinator(BaseGarminCoordinator):
     """Coordinator for core data: summary, steps, sleep (~50 sensors).
 
@@ -261,6 +302,17 @@ class CoreCoordinator(BaseGarminCoordinator):
         self._yesterday: dict[str, Any] = {}
         self._yesterday_date: date | None = None
         self._yesterday_sync: Any = None
+        self._sleep_raw: dict[str, Any] = {}
+        # Keep the raw sleep response that fetch_core_data already requests,
+        # so the stage timeline costs no extra API call.
+        fetch_sleep = client._get_sleep_data_raw
+
+        async def _capture_sleep(*args: Any, **kwargs: Any) -> dict[str, Any]:
+            result = await fetch_sleep(*args, **kwargs)
+            self._sleep_raw = result if isinstance(result, dict) else {}
+            return result
+
+        client._get_sleep_data_raw = _capture_sleep  # type: ignore[method-assign]
 
     @property
     def has_opt_in_listeners(self) -> bool:
@@ -270,9 +322,11 @@ class CoreCoordinator(BaseGarminCoordinator):
     async def _fetch(self) -> dict[str, Any]:
         """Fetch core data, plus yesterday's summary and latest heart rate if used."""
         contexts = set(self.async_contexts())
+        self._sleep_raw = {}
         data = await self.client.fetch_core_data(
             latest_heart_rate=LATEST_HEART_RATE_CONTEXT in contexts
         )
+        data = {**data, **sleep_timeline(self._sleep_raw)}
         if YESTERDAY_CONTEXT not in contexts:
             return data
         try:
